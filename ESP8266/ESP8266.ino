@@ -1,131 +1,177 @@
 #include <ESP8266WiFi.h>
+#include <WiFiClient.h>
+#include <ESP8266WebServer.h>
+#include <ESP8266mDNS.h>
 
-void setup() {
-  Serial.begin(115200);
+const char *ssid = "Maker-office";
+const char *password = "hulurobot423";
+MDNSResponder mdns;
+
+ESP8266WebServer server ( 80 );
+
+
+void handleRoot() {
+  char temp[400];
+  int sec = millis() / 1000;
+  int min = sec / 60;
+  int hr = min / 60;
+
+  snprintf ( temp, 400,
+
+"<html>\
+  <head>\
+    <meta http-equiv='refresh' content='5'/>\
+    <title>Serial Camera</title>\
+    <style>\
+      body { background-color: #cccccc; font-family: Arial, Helvetica, Sans-Serif; Color: #000088; }\
+    </style>\
+  </head>\
+  <body>\
+    <h1>Hello from ESP8266!</h1>\
+    <p>Uptime: %02d:%02d:%02d</p>\
+    <img src=\"/test.svg\" />\
+  </body>\
+</html>",
+
+    hr, min % 60, sec % 60
+  );
+  server.send ( 200, "text/html", temp );
 }
 
-int value = 0;
-bool isCapture = false;
-unsigned char bytes[10240];
-int bytesSize = 0;
-int bytesIndex = 0;
-String buffer = "";
-void loop() {
-   if(Serial.available()){
-    if(isCapture){
-      bytes[bytesIndex] = Serial.read();
-      bytesIndex++;
-      if(bufferIndex>=bytesSize){
-        isCapture = false;
+void handleNotFound() {
+  String message = "File Not Found\n\n";
+  message += "URI: ";
+  message += server.uri();
+  message += "\nMethod: ";
+  message += ( server.method() == HTTP_GET ) ? "GET" : "POST";
+  message += "\nArguments: ";
+  message += server.args();
+  message += "\n";
+
+  for ( uint8_t i = 0; i < server.args(); i++ ) {
+    message += " " + server.argName ( i ) + ": " + server.arg ( i ) + "\n";
+  }
+
+  server.send ( 404, "text/plain", message );
+  digitalWrite ( led, 0 );
+}
+
+void drawGraph() {
+  String out = "";
+  char temp[100];
+  out += "<svg xmlns=\"http://www.w3.org/2000/svg\" version=\"1.1\" width=\"400\" height=\"150\">\n";
+  out += "<rect width=\"400\" height=\"150\" fill=\"rgb(250, 230, 210)\" stroke-width=\"1\" stroke=\"rgb(0, 0, 0)\" />\n";
+  out += "<g stroke=\"black\">\n";
+  int y = rand() % 130;
+  for (int x = 10; x < 390; x+= 10) {
+    int y2 = rand() % 130;
+    sprintf(temp, "<line x1=\"%d\" y1=\"%d\" x2=\"%d\" y2=\"%d\" stroke-width=\"1\" />\n", x, 140 - y, x + 10, 140 - y2);
+    out += temp;
+    y = y2;
+  }
+  out += "</g>\n</svg>\n";
+
+  server.send ( 200, "image/svg+xml", out);
+}
+int isRequestMode = -1;
+int bufferIndex = 0;
+union{
+  byte bytes[2];
+  unsigned short s;
+}bytes2short;
+unsigned char imgBuffer[1024];
+void setup ( void ) {
+  Serial.begin ( 115200 );
+  WiFi.begin ( ssid, password );
+  Serial.println ( "" );
+
+  // Wait for connection
+  while ( WiFi.status() != WL_CONNECTED ) {
+    delay ( 500 );
+    Serial.print ( "." );
+  }
+
+  Serial.println ( "" );
+  Serial.print ( "Connected to " );
+  Serial.println ( ssid );
+  Serial.print ( "IP address: " );
+  Serial.println ( WiFi.localIP() );
+
+  if ( mdns.begin ( "esp8266", WiFi.localIP() ) ) {
+    Serial.println ( "MDNS responder started" );
+  }
+
+  server.on ( "/", handleRoot );
+  server.on ( "/test.svg", drawGraph );
+  server.on ( "/request/length", []() {
+    bufferIndex = 0;
+    isRequestMode = 0;
+    String s = "length:";
+    s += bytes2short.bytes[0];
+    s += " ";
+    s += bytes2short.bytes[1];
+    s += " ";
+    s += bytes2short.s;
+    s += "\n";
+    server.send ( 200, "text/html", s );
+  } );
+  server.on ( "/request/buffer", []() {
+    bufferIndex = 0;
+    isRequestMode = 2;
+    server.send ( 200, "text/html", "/request/buffer ok" );
+    Serial.print("/request/buffer\n");
+  } );
+  server.on ( "/capture", []() {
+    server.send ( 200, "text/html", "/capture ok" );
+    isRequestMode = 0;
+    Serial.print("/clear\n");
+    delay(500);
+    Serial.print("/capture\n");
+    delay(500);
+    bufferIndex = 0;
+    isRequestMode = 1;
+    Serial.print("/request/length\n");
+  } );
+  server.on ( "/clear", []() {
+    isRequestMode = 0;
+    server.send ( 200, "text/html", "/clear ok" );
+    Serial.print("/clear\n");
+  } );
+  server.on ( "/reset", []() {
+    server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+    server.send ( 200, "text/html", "/reset\n" );
+    Serial.print("/reset\n");
+  } );
+  server.onNotFound ( handleNotFound );
+  server.begin();
+  Serial.println ( "HTTP server started" );
+}
+char ok[3];
+void loop ( void ) {
+  if(isRequestMode<=0){
+    mdns.update();
+    server.handleClient();
+  }else{
+    if(Serial.available()){
+      unsigned char c = Serial.read();
+      if(isRequestMode==1){
+        if(bufferIndex>=7&&bufferIndex<=8){
+          bytes2short.bytes[bufferIndex-7] = c;
+          if(bufferIndex==8){
+            isRequestMode = 0;
+          }
+        }
       }
-    }else{
-      char c = Serial.read();
-      if(c=='\n'){
-        parseBuffer();
-      }else{
-        buffer+=c;
+      if(isRequestMode==2){
+        imgBuffer[bufferIndex]=c;
       }
+      bufferIndex++;
+      if(ok[0]=='\n'&&ok[1]=='k'&&ok[2]=='o'){    
+      }
+      ok[2] = ok[1];
+      ok[1] = ok[0];
+      ok[0] = c;
     }
   }
-}
-void parseBuffer(){
-  buffer = buffer+"/";
-  int count = 0;
-  int startIndex = 0;
-  int endIndex = 0;
-  int len = buffer.length();
-  if(len<1){
-    return;
-  }
-  String tmp;
-  String values[10];
-  while(true) {
-    startIndex = buffer.indexOf("/", endIndex);
-    endIndex = buffer.indexOf("/", startIndex + 1);
-    tmp = buffer.substring(startIndex+1, endIndex);
-    values[count] = tmp;
-    count++;
-    if(endIndex==len-1) break;
-  }
-  if(values[0].equals("setupwifi")){
-    setupWIFI(values[1],values[2]);
-  }
-  if(values[0].equals("wifistatus")){
-    wifiStatus();
-  }
-  if(values[0].equals("capture")){
-    captureMode(values[1]);
-  }
-  Serial.println(buffer);
-  buffer = "";
-}
-void setupWIFI(String ssid, String password){
-
-  // We start by connecting to a WiFi network
-  Serial.println();
-  Serial.println();
-  Serial.print("Connecting to ");
-  Serial.println(ssid);
-  
-  WiFi.begin(ssid.c_str(), password.c_str());
-  
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-
-  Serial.println("");
-  Serial.println("WiFi connected");  
-  Serial.println("IP address: ");
-  Serial.println(WiFi.localIP());
-}
-void wifiStatus(){
-  Serial.print("/wifistatus/");
-  Serial.print(WiFi.status());
-}
-void captureMode(String len){
-  bytesSize = len.toInt();
-  isCapture = true;
-}
-void sendRequest(String host,String port,String url){
-  Serial.print("connecting to ");
-  Serial.println(host);
-  
-  // Use WiFiClient class to create TCP connections
-  WiFiClient client;
-  const int httpPort = 80;
-  if (!client.connect(host.c_str(), port.toInt())) {
-    Serial.println("connection failed");
-    return;
-  }
-  url.replace("%2F","/");
-  
-  Serial.print("Requesting URL: ");
-  Serial.println(url);
-  
-  // This will send the request to the server
-  client.print(String("GET ") + url + " HTTP/1.1\r\n" +
-               "Host: " + host + "\r\n" + 
-               "Connection: close\r\n\r\n");
-  delay(10);
-  
-  // Read all the lines of the reply from server and print them to Serial
-  while(client.available()){
-    String line = client.readStringUntil('\r');
-    Serial.print(line);
-  }
-  
-  Serial.println();
-  Serial.println("closing connection");
-}
-
-
-void urlencode(String str)
-{
-  str.replace("/","%2F");
-}
-void urldecode(String str)
-{
-  str.replace("%2F","/");
 }
 

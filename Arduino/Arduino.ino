@@ -1,12 +1,11 @@
-#include <MeBaseBoard.h>
+#include <MeOrion.h>
 #include <SoftwareSerial.h>
-
-SoftwareSerial sw(A10,A9);
+MePort port(PORT_3);
+SoftwareSerial sw(port.pin1(),port.pin2());
 String buffer = "";
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
-  Serial1.begin(115200);
   sw.begin(19200);
 }
 
@@ -15,9 +14,10 @@ double lastTime = 0;
 bool isCapture = false;
 int bytesSize = 0;
 int bytesIndex = 0;
+char c;
 void loop() {
-  if(Serial1.available()){
-    char c = Serial1.read();
+  if(Serial.available()){
+    c = Serial.read();
     if(c=='\n'){
       parseBuffer();
     }else{
@@ -27,12 +27,9 @@ void loop() {
   if(sw.available()){
     unsigned char c = sw.read();
     Serial.write(c);
-    Serial1.write(c);
   }
 }
 void parseBuffer(){
-  
-  
   buffer = buffer+"/";
   int count = 0;
   int startIndex = 0;
@@ -71,8 +68,6 @@ void parseBuffer(){
     cameraBaudrate(values[1].toInt());
   }
   buffer = "";
-  Serial.print(values[0]);
-  Serial.print(" ok\n");
 }
 void cameraReset(){
   sw.write(0x56);

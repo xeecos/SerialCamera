@@ -1,3 +1,4 @@
+
 #include <ESP8266WiFi.h>
 #include <WiFiClient.h>
 #include <ESP8266WebServer.h>
@@ -9,7 +10,6 @@ MDNSResponder mdns;
 
 ESP8266WebServer server ( 80 );
 
-
 void handleRoot() {
   char temp[400];
   int sec = millis() / 1000;
@@ -17,7 +17,6 @@ void handleRoot() {
   int hr = min / 60;
 
   snprintf ( temp, 400,
-
 "<html>\
   <head>\
     <meta http-equiv='refresh' content='5'/>\
@@ -31,10 +30,7 @@ void handleRoot() {
     <p>Uptime: %02d:%02d:%02d</p>\
     <img src=\"/test.svg\" />\
   </body>\
-</html>",
-
-    hr, min % 60, sec % 60
-  );
+</html>",hr, min % 60, sec % 60);
   server.send ( 200, "text/html", temp );
 }
 
@@ -53,7 +49,6 @@ void handleNotFound() {
   }
 
   server.send ( 404, "text/plain", message );
-  digitalWrite ( led, 0 );
 }
 
 void drawGraph() {
@@ -174,4 +169,3 @@ void loop ( void ) {
     }
   }
 }
-
